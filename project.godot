@@ -1,0 +1,80 @@
+; Lemov - Godot 4.3 project
+config_version=5
+
+[application]
+
+config/name="Lemov"
+config/description="Open world 3D racing"
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.3", "GL Compatibility")
+run/max_fps=0
+boot_splash/bg_color=Color(0.02, 0.025, 0.04, 1)
+boot_splash/show_image=false
+config/icon="res://icons/icon_512.png"
+
+[autoload]
+
+G="*res://scripts/game_state.gd"
+W="*res://scripts/world_data.gd"
+
+[display]
+
+window/size/viewport_width=1920
+window/size/viewport_height=1080
+window/size/resizable=true
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation=4
+window/vsync/vsync_mode=0
+
+[input_devices]
+
+pointing/emulate_touch_from_mouse=true
+pointing/emulate_mouse_from_touch=false
+
+[layer_names]
+
+3d_physics/layer_1="world"
+3d_physics/layer_2="player"
+3d_physics/layer_3="traffic"
+
+[physics]
+
+common/physics_ticks_per_second=120
+common/max_physics_steps_per_frame=8
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/vram_compression/import_etc2_astc=true
+textures/canvas_textures/default_texture_filter=2
+textures/default_filters/anisotropic_filtering_level=3
+anti_aliasing/quality/msaa_3d=1
+lights_and_shadows/directional_shadow/size=2048
+lights_and_shadows/directional_shadow/soft_shadow_filter_quality=2
+environment/defaults/default_clear_color=Color(0.02, 0.025, 0.04, 1)
+limits/global_shader_variables/buffer_size=65536
+
+[shader_globals]
+
+night={
+"type": "float",
+"value": 0.0
+}
+tod={
+"type": "float",
+"value": 12.0
+}
+quality={
+"type": "float",
+"value": 2.0
+}
+wetness={
+"type": "float",
+"value": 0.0
+}
+sun_dir={
+"type": "vec3",
+"value": Vector3(0.4, 0.8, 0.3)
+}
