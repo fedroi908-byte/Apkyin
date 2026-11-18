@@ -3,7 +3,15 @@ name: Build Android APK
 on:
   push:
     branches: [ main, master ]
+    paths-ignore: [ 'index.html', 'docs/**', '**.md' ]
   workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-apk-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   GODOT_VERSION: "4.3"
@@ -12,13 +20,45 @@ jobs:
   build-apk:
     name: Export debug APK
     runs-on: ubuntu-22.04
+    timeout-minutes: 60
     container:
       image: barichello/godot-ci:4.3
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install export templates
+      - name: Unpack zip parts
+        run: |
+          for z in $(ls lemov-*.zip | sort); do
+            echo "unpacking $z"
+            if command -v unzip >/dev/null 2>&1; then unzip -o -q "$z" -x '.github/*'; else jar xf "$z"; fi
+          done
+          test -f project.godot
+          test -f export_presets.cfg
+          du -sh assets/cars
+
+      - name: Server config and build number
+        env:
+          LEMOV_SERVER: ${{ secrets.LEMOV_SERVER }}
+        run: |
+          mkdir -p data
+          if [ -n "$LEMOV_SERVER" ]; then
+            printf '%s' "$LEMOV_SERVER" > data/server.json; rm -f data/fx.bin
+          elif [ -f server.json ]; then
+            cp server.json data/server.json; rm -f data/fx.bin
+          fi
+          printf '{"build": %s, "ver": "1.0.%s"}' "${{ github.run_number }}" "${{ github.run_number }}" > data/build.json
+          sed -i "s/^version\/code=.*/version\/code=${{ github.run_number }}/" export_presets.cfg
+          sed -i "s/^version\/name=.*/version\/name=\"1.0.${{ github.run_number }}\"/" export_presets.cfg
+          grep -E '^version/' export_presets.cfg
+
+      - name: Restore signing keystore
+        uses: actions/cache@v4
+        with:
+          path: /root/debug.keystore
+          key: lemov-debug-keystore-v1
+
+      - name: Export templates
         run: |
           mkdir -p ~/.local/share/godot/export_templates
           if [ -d /root/.local/share/godot/export_templates/${GODOT_VERSION}.stable ]; then
@@ -26,7 +66,7 @@ jobs:
           fi
           ls ~/.local/share/godot/export_templates/
 
-      - name: Create debug keystore and editor settings
+      - name: Keystore and editor settings
         run: |
           mkdir -p ~/.config/godot
           KS=/root/debug.keystore
@@ -39,9 +79,8 @@ jobs:
           for p in /usr/lib/android-sdk /opt/android-sdk /usr/local/lib/android/sdk "$ANDROID_HOME" "$ANDROID_SDK_ROOT"; do
             if [ -n "$p" ] && [ -d "$p" ]; then SDK="$p"; break; fi
           done
-          echo "Android SDK: $SDK"
           JAVA=$(dirname $(dirname $(readlink -f $(which javac))))
-          echo "Java: $JAVA"
+          echo "SDK=$SDK JAVA=$JAVA"
           cat > ~/.config/godot/editor_settings-4.3.tres <<EOF
           [gd_resource type="EditorSettings" format=3]
 
@@ -55,17 +94,18 @@ jobs:
           export/android/shutdown_adb_on_exit = true
           EOF
           sed -i 's/^          //' ~/.config/godot/editor_settings-4.3.tres
-          cat ~/.config/godot/editor_settings-4.3.tres
 
-      - name: Import project resources
+      - name: Import resources
         run: |
-          godot --headless --verbose --import || true
-          godot --headless --verbose --import || true
+          godot --headless --import 2>&1 | tail -n 30 || true
+          godot --headless --import 2>&1 | tail -n 30 || true
+          test -d .godot/imported
 
       - name: Export APK
         run: |
           mkdir -p build
-          godot --headless --verbose --export-debug "Android" build/Lemov.apk
+          godot --headless --export-debug "Android" build/Lemov.apk 2>&1 | tail -n 80
+          test -s build/Lemov.apk
           ls -la build
 
       - name: Upload APK
@@ -73,4 +113,15 @@ jobs:
         with:
           name: Lemov-apk
           path: build/Lemov.apk
+          compression-level: 0
           if-no-files-found: error
+
+      - name: Publish to latest release
+        continue-on-error: true
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Lemov latest build
+          body: Latest APK built from the repository.
+          files: build/Lemov.apk
+          overwrite_files: true
